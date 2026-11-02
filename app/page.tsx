@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { getLocalPosts, type LocalPost } from "@/app/lib/local-content";
 
-type Draft = { id: number; client: string; handle: string; type: string; title: string; date: string; status: "Freigabe ausstehend" | "Entwurf" | "Freigegeben"; tone: string; initials: string };
+type Draft = { id: number | string; client: string; handle: string; type: string; title: string; date: string; status: "Freigabe ausstehend" | "Entwurf" | "Freigegeben"; tone: string; initials: string; previewUrl?: string; captionSummary?: string };
 
 const initialDrafts: Draft[] = [
   { id: 1, client: "Maison Élan", handle: "@maisonelan.studio", type: "REEL", title: "Ein Morgen im Atelier", date: "Heute · 16:30", status: "Freigabe ausstehend", tone: "rose", initials: "M" },
@@ -23,8 +24,28 @@ export default function Home() {
   const [activeNav, setActiveNav] = useState("Übersicht");
   const [filter, setFilter] = useState("Alle Inhalte");
   const [drafts, setDrafts] = useState(initialDrafts);
+  const [localPosts, setLocalPosts] = useState<LocalPost[]>([]);
+  const [postPreviews, setPostPreviews] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState("");
-  const visibleDrafts = useMemo(() => filter === "Alle Inhalte" ? drafts : drafts.filter((draft) => draft.status === filter), [drafts, filter]);
+  useEffect(() => {
+    let current = true;
+    void getLocalPosts().then((posts) => { if (current) setLocalPosts(posts); }).catch(() => undefined);
+    return () => { current = false; };
+  }, []);
+  useEffect(() => {
+    const previews = Object.fromEntries(localPosts.map((post) => [post.id, URL.createObjectURL(post.image)]));
+    setPostPreviews(previews);
+    return () => Object.values(previews).forEach((url) => URL.revokeObjectURL(url));
+  }, [localPosts]);
+  const allDrafts = useMemo(() => [
+    ...localPosts.map((post) => {
+      const style = post.client === "Maison Élan" ? { tone: "rose", initials: "M" } : post.client === "Studio Noura" ? { tone: "sage", initials: "N" } : { tone: "gold", initials: "S" };
+      const date = post.wishDate ? `Wunsch: ${new Date(post.wishDate).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })}` : "Noch nicht geplant";
+      return { id: post.id, client: post.client, handle: post.handle, type: post.format === "story" ? "STORY" : post.format === "cover" ? "FEED" : "POST", title: post.title, date, status: "Entwurf" as const, ...style, previewUrl: postPreviews[post.id], captionSummary: [post.caption, post.hashtags].filter(Boolean).join("  ") };
+    }),
+    ...drafts,
+  ], [localPosts, postPreviews, drafts]);
+  const visibleDrafts = useMemo(() => filter === "Alle Inhalte" ? allDrafts : allDrafts.filter((draft) => draft.status === filter), [allDrafts, filter]);
 
   function addDraft() {
     const draft: Draft = { id: Date.now(), client: "Samin Consulting", handle: "@samin.consulting", type: "POST", title: "Neuer Content-Entwurf", date: "Noch nicht geplant", status: "Entwurf", tone: "gold", initials: "S" };
@@ -62,9 +83,9 @@ export default function Home() {
         </div>
 
         <div className="content-grid">
-          <section className="panel editorial-panel"><div className="panel-heading"><div><div className="section-kicker">DEIN WORKFLOW</div><h2>Redaktionsübersicht <span className="count-chip">{drafts.length.toString().padStart(2, "0")}</span></h2></div><button className="text-link" onClick={() => setActiveNav("Redaktionsplan")}>Zum Redaktionsplan <span>↗</span></button></div>
+          <section className="panel editorial-panel"><div className="panel-heading"><div><div className="section-kicker">DEIN WORKFLOW</div><h2>Redaktionsübersicht <span className="count-chip">{allDrafts.length.toString().padStart(2, "0")}</span></h2></div><button className="text-link" onClick={() => setActiveNav("Redaktionsplan")}>Zum Redaktionsplan <span>↗</span></button></div>
             <div className="filter-row"><div className="filters">{["Alle Inhalte", "Freigabe ausstehend", "Entwurf"].map((item) => <button key={item} className={filter === item ? "selected" : ""} onClick={() => setFilter(item)}>{item}{item === "Freigabe ausstehend" && <span className="filter-count">2</span>}</button>)}</div><button className="filter-more" aria-label="Weitere Filter" onClick={() => setNotice("Weitere Filter kommen mit der vollständigen Contentverwaltung.")}>☷</button></div>
-            <div className="draft-list">{visibleDrafts.map((draft) => <article className="draft-row" key={draft.id}><div className={`draft-thumb ${draft.tone}`}><span>{draft.initials}</span><i>{draft.type === "REEL" ? "▶" : draft.type === "CAROUSEL" ? "▧" : draft.type === "STORY" ? "◉" : "✳"}</i></div><div className="draft-info"><div className="draft-meta"><span className="content-type">{draft.type}</span><span className="meta-divider">·</span><span>{draft.client}</span></div><h3>{draft.title}</h3><span className="draft-handle">{draft.handle}</span></div><div className="draft-right"><Badge kind={draft.status === "Freigabe ausstehend" ? "pending" : draft.status === "Freigegeben" ? "approved" : "draft"}>{draft.status}</Badge><span className="draft-date">◷ &nbsp;{draft.date}</span></div><button className="row-more" aria-label={`Aktionen für ${draft.title}`} onClick={() => setNotice("Beitragsaktionen werden im nächsten Ausbauschritt ergänzt.")}>···</button></article>)}{visibleDrafts.length === 0 && <div className="empty-state">Keine Inhalte in dieser Kategorie.</div>}</div>
+            <div className="draft-list">{visibleDrafts.map((draft) => <article className="draft-row" key={draft.id}><div className={`draft-thumb ${draft.tone}`}>{draft.previewUrl ? <img src={draft.previewUrl} alt="" /> : <span>{draft.initials}</span>}<i>{draft.type === "REEL" ? "▶" : draft.type === "CAROUSEL" ? "▧" : draft.type === "STORY" ? "◉" : "✳"}</i></div><div className="draft-info"><div className="draft-meta"><span className="content-type">{draft.type}</span><span className="meta-divider">·</span><span>{draft.client}</span></div><h3>{draft.title}</h3>{draft.captionSummary && <span className="draft-caption">{draft.captionSummary}</span>}<span className="draft-handle">{draft.handle}</span></div><div className="draft-right"><Badge kind={draft.status === "Freigabe ausstehend" ? "pending" : draft.status === "Freigegeben" ? "approved" : "draft"}>{draft.status}</Badge><span className="draft-date">◷ &nbsp;{draft.date}</span></div><button className="row-more" aria-label={`Aktionen für ${draft.title}`} onClick={() => setNotice("Beitragsaktionen werden im nächsten Ausbauschritt ergänzt.")}>···</button></article>)}{visibleDrafts.length === 0 && <div className="empty-state">Keine Inhalte in dieser Kategorie.</div>}</div>
             <button className="load-more" onClick={() => setNotice("Alle Demo-Inhalte werden bereits angezeigt.")}>Alle Inhalte ansehen <span>→</span></button>
           </section>
 

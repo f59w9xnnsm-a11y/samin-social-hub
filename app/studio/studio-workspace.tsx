@@ -2,59 +2,41 @@
 
 import Link from "next/link";
 import { type ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
+import { getDesigns, saveDesign as storeDesign, savePost, type LocalPost, type MediaFormat, type SavedDesign } from "@/app/lib/local-content";
 import "./studio.css";
+import "./post-workflow.css";
 
-type Format = "post" | "story" | "cover";
-type SavedDesign = { id: string; title: string; format: Format; createdAt: number; image: Blob };
-const dimensions: Record<Format, { width: number; height: number; label: string }> = {
+const dimensions: Record<MediaFormat, { width: number; height: number; label: string }> = {
   post: { width: 1080, height: 1080, label: "Post · Quadrat" },
   story: { width: 1080, height: 1920, label: "Story · Hochformat" },
   cover: { width: 1080, height: 1350, label: "Feed · Hochformat" },
 };
 
-function openLibrary(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    if (!("indexedDB" in window)) return reject(new Error("Dieser Browser unterstützt die lokale Medienablage nicht."));
-    const request = indexedDB.open("samin-social-hub-media", 1);
-    request.onupgradeneeded = () => {
-      const database = request.result;
-      if (!database.objectStoreNames.contains("designs")) database.createObjectStore("designs", { keyPath: "id" });
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error ?? new Error("Die Medienablage konnte nicht geöffnet werden."));
-  });
-}
-
-function storeDesign(design: SavedDesign): Promise<void> {
-  return openLibrary().then((database) => new Promise((resolve, reject) => {
-    const request = database.transaction("designs", "readwrite").objectStore("designs").put(design);
-    request.onsuccess = () => { database.close(); resolve(); };
-    request.onerror = () => { database.close(); reject(request.error ?? new Error("Der Entwurf konnte nicht gespeichert werden.")); };
-  }));
-}
-
-function getDesigns(): Promise<SavedDesign[]> {
-  return openLibrary().then((database) => new Promise((resolve, reject) => {
-    const request = database.transaction("designs", "readonly").objectStore("designs").getAll();
-    request.onsuccess = () => { database.close(); resolve((request.result as SavedDesign[]).sort((a, b) => b.createdAt - a.createdAt)); };
-    request.onerror = () => { database.close(); reject(request.error ?? new Error("Die Entwürfe konnten nicht geladen werden.")); };
-  }));
-}
+const clientOptions = [
+  { name: "Samin Consulting", handle: "@samin.consulting" },
+  { name: "Maison Élan", handle: "@maisonelan.studio" },
+  { name: "Studio Noura", handle: "@studionoura.de" },
+];
 
 export default function StudioWorkspace() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const [imageUrl, setImageUrl] = useState("");
   const [imageVersion, setImageVersion] = useState(0);
-  const [format, setFormat] = useState<Format>("post");
+  const [format, setFormat] = useState<MediaFormat>("post");
   const [title, setTitle] = useState("Deine Geschichte\nbeginnt hier.");
   const [subtitle, setSubtitle] = useState("EIN IMPULS VON SAMIN CONSULTING");
   const [background, setBackground] = useState("#c6b38f");
   const [textColor, setTextColor] = useState("#ffffff");
   const [layout, setLayout] = useState<"editorial" | "minimal">("editorial");
+  const [client, setClient] = useState(clientOptions[0].name);
+  const [caption, setCaption] = useState("");
+  const [hashtags, setHashtags] = useState("");
+  const [wishDate, setWishDate] = useState("");
   const [saved, setSaved] = useState<SavedDesign[]>([]);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [createdPost, setCreatedPost] = useState(false);
 
   const refreshSaved = useCallback(async () => {
     try { setSaved(await getDesigns()); } catch { setSaved([]); }
@@ -159,6 +141,27 @@ export default function StudioWorkspace() {
     finally { setBusy(false); }
   }
 
+  async function createPostDraft() {
+    setBusy(true);
+    try {
+      const image = await canvasBlob();
+      const selectedClient = clientOptions.find((option) => option.name === client) ?? clientOptions[0];
+      const designId = crypto.randomUUID();
+      const titleLine = title.split("\n")[0] || "Neuer Beitragsentwurf";
+      const createdAt = Date.now();
+      const design: SavedDesign = { id: designId, title: titleLine, format, createdAt, image };
+      const post: LocalPost = {
+        id: crypto.randomUUID(), designId, title: titleLine, client: selectedClient.name,
+        handle: selectedClient.handle, format, caption, hashtags, wishDate, status: "Entwurf", createdAt, image,
+      };
+      await savePost(post, design);
+      await refreshSaved();
+      setCreatedPost(true);
+      setMessage("Beitragsentwurf mit Grafik wurde gespeichert und erscheint in der Redaktionsübersicht.");
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Der Beitragsentwurf konnte nicht gespeichert werden."); }
+    finally { setBusy(false); }
+  }
+
   async function exportDesign() {
     setBusy(true);
     try {
@@ -188,11 +191,12 @@ export default function StudioWorkspace() {
     <div className="studio-shell"><div className="studio-heading"><div><span className="studio-kicker">KREATION & CONTENT</span><h1>Medien-Studio</h1><p>Gestalte deine Social-Media-Grafiken direkt in deinem Workflow.</p></div><Link href="/" className="back-link">← Zur Übersicht</Link></div>
       <div className="studio-disclaimer"><span>✦</span><p><b>Dein kreativer Arbeitsbereich.</b> Hier entstehen Instagram-Grafiken im Samin-Look. Gespeicherte Entwürfe bleiben zunächst nur in diesem Browser.</p></div>
       <div className="studio-layout"><section className="editor-panel"><div className="editor-toolbar"><div><span className="studio-kicker">VORSCHAU</span><strong>{dimensions[format].label}</strong></div><label className="upload-button">↑ Bild hinzufügen<input type="file" accept="image/*" onChange={handleUpload} /></label></div><div className="canvas-stage"><canvas ref={canvasRef} aria-label="Vorschau deiner Social-Media-Grafik" /></div><div className="canvas-foot"><span>Vorschau · Export in hoher Auflösung</span><span>{dimensions[format].width} × {dimensions[format].height} px</span></div></section>
-        <aside className="editor-controls"><div className="control-section"><span className="studio-kicker">1 · FORMAT</span><div className="format-options">{(["post", "cover", "story"] as Format[]).map((item) => <button key={item} className={format === item ? "format-option chosen" : "format-option"} onClick={() => setFormat(item)}><span className={`format-preview ${item}`} /><span><b>{item === "post" ? "Quadrat" : item === "cover" ? "Feed hoch" : "Story"}</b><small>{dimensions[item].width} × {dimensions[item].height}</small></span>{format === item && <i>✓</i>}</button>)}</div></div>
+        <aside className="editor-controls"><div className="control-section"><span className="studio-kicker">1 · FORMAT</span><div className="format-options">{(["post", "cover", "story"] as MediaFormat[]).map((item) => <button key={item} className={format === item ? "format-option chosen" : "format-option"} onClick={() => setFormat(item)}><span className={`format-preview ${item}`} /><span><b>{item === "post" ? "Quadrat" : item === "cover" ? "Feed hoch" : "Story"}</b><small>{dimensions[item].width} × {dimensions[item].height}</small></span>{format === item && <i>✓</i>}</button>)}</div></div>
           <div className="control-section"><span className="studio-kicker">2 · VORLAGE</span><div className="template-options"><button className={layout === "editorial" ? "template chosen" : "template"} onClick={() => setLayout("editorial")}><span className="template-swatch editorial-swatch"><i>Deine<br />Geschichte</i><small>SAMIN / NOTES</small></span><b>Editorial</b></button><button className={layout === "minimal" ? "template chosen" : "template"} onClick={() => setLayout("minimal")}><span className="template-swatch minimal-swatch"><small>DEIN IMPULS</small><i>Deine<br />Geschichte</i></span><b>Minimal</b></button></div></div>
           <div className="control-section"><span className="studio-kicker">3 · DEIN TEXT</span><label className="field-label">Überschrift <small>Zeilenumbruch mit Enter</small></label><textarea rows={2} maxLength={100} value={title} onChange={(event) => setTitle(event.target.value)} /><label className="field-label">Kleine Zeile</label><input className="text-field" maxLength={42} value={subtitle} onChange={(event) => setSubtitle(event.target.value)} /></div>
           <div className="control-section color-section"><span className="studio-kicker">4 · FARBEN</span><label className="color-control"><span>Hintergrund</span><input type="color" value={background} onChange={(event) => setBackground(event.target.value)} /></label><label className="color-control"><span>Schrift</span><input type="color" value={textColor} onChange={(event) => setTextColor(event.target.value)} /></label></div>
-          <div className="editor-actions"><button className="save-design" disabled={busy} onClick={saveDesign}>{busy ? "Wird gespeichert …" : "Entwurf speichern"}</button><button className="export-design" disabled={busy} onClick={exportDesign}>↓ PNG exportieren</button></div>{message && <div className="studio-message" role="status">{message}</div>}
+          <div className="control-section post-section"><span className="studio-kicker">5 · BEITRAG VORBEREITEN</span><label className="field-label">Kunde</label><select className="text-field" value={client} onChange={(event) => setClient(event.target.value)}>{clientOptions.map((option) => <option key={option.name}>{option.name}</option>)}</select><label className="field-label">Caption</label><textarea rows={3} maxLength={2200} placeholder="Schreibe den Text zu deinem Beitrag …" value={caption} onChange={(event) => setCaption(event.target.value)} /><label className="field-label">Hashtags <small>optional</small></label><input className="text-field" maxLength={500} placeholder="#samin #socialmedia" value={hashtags} onChange={(event) => setHashtags(event.target.value)} /><label className="field-label">Veröffentlichungswunsch <small>nur vorgemerkt, nicht geplant</small></label><input className="text-field" type="datetime-local" value={wishDate} onChange={(event) => setWishDate(event.target.value)} /></div>
+          <div className="editor-actions editor-actions-stack"><button className="save-design" disabled={busy} onClick={createPostDraft}>{busy ? "Wird gespeichert …" : "Als Beitragsentwurf speichern"}</button><div className="editor-actions"><button className="export-design" disabled={busy} onClick={saveDesign}>In Medienablage sichern</button><button className="export-design" disabled={busy} onClick={exportDesign}>↓ PNG exportieren</button></div></div>{message && <div className="studio-message" role="status">{message} {createdPost && <Link href="/" className="studio-queue-link">Redaktionsübersicht öffnen →</Link>}</div>}
         </aside></div>
       <section className="saved-library"><div className="library-heading"><div><span className="studio-kicker">DEINE MEDIENABLAGE</span><h2>Gespeicherte Entwürfe <span>{saved.length}</span></h2></div><span className="local-label">Nur in diesem Browser</span></div>{saved.length ? <div className="saved-grid">{saved.slice(0, 6).map((design) => <SavedCard key={design.id} design={design} onOpen={() => void loadSaved(design)} />)}</div> : <div className="library-empty"><span>▧</span><p>Deine Entwürfe erscheinen hier, sobald du etwas speicherst.</p></div>}</section>
       <footer className="studio-footer">MEDIEN-STUDIO · PHASE 1 <span>Video-Bearbeitung und gemeinsame Teamablage folgen in weiteren Ausbauschritten.</span></footer>

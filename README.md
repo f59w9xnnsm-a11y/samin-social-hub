@@ -21,10 +21,11 @@ Für eine Produktionsvorschau `npm run build` und anschließend `npm run start` 
 - Beispiel-Kundenliste im Seitenmenü.
 - Redaktionsübersicht mit Filtern für Entwürfe und ausstehende Freigaben.
 - „Neuer Beitrag“ legt einen lokalen Demo-Entwurf an; er wird nicht gespeichert, wenn die Seite neu geladen wird.
-- Medien-Studio für Bildgrafiken: Bild hochladen, Quadrat-/Hochformat-/Story-Format wählen, Text und Farben anpassen, als PNG exportieren oder in der lokalen Medienablage speichern.
+- Medien-Studio für Bildgrafiken: Bild hochladen, Quadrat-/Hochformat-/Story-Format wählen, Text und Farben anpassen, Caption und Hashtags ergänzen sowie als PNG exportieren.
+- „Als Beitragsentwurf speichern“ verknüpft Grafik, Caption und Hashtags lokal mit einem Demo-Kunden und zeigt den Entwurf samt Vorschaubild in der Redaktionsübersicht.
 - Responsive Layout für Desktop, Tablet und Mobilgeräte.
 
-Das Medien-Studio speichert Entwürfe lokal im IndexedDB-Speicher dieses Browserprofils. Sie werden nicht zwischen Geräten oder Teammitgliedern synchronisiert. Die Grafik kann als Bildvorlage wieder geöffnet werden; Video-/Reel-Bearbeitung und die Zuordnung zu einem tatsächlichen Veröffentlichungsauftrag sind noch nicht umgesetzt. Es gibt noch keine zentrale Datenbank, Anmeldung, Teamrollen oder Kundenfreigaben.
+Das Medien-Studio speichert Grafiken und Beitragsentwürfe lokal im IndexedDB-Speicher dieses Browserprofils. Sie werden nicht zwischen Geräten oder Teammitgliedern synchronisiert. Ein angegebenes Veröffentlichungsdatum ist nur ein Wunsch und löst keine automatische Planung aus. Video-/Reel-Bearbeitung ist noch nicht umgesetzt. Es gibt noch keine zentrale Datenbank, Anmeldung, Teamrollen oder Kundenfreigaben.
 
 ## Roadmap: offizielle Meta-/Instagram-Anbindung
 
