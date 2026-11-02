@@ -21,9 +21,10 @@ Für eine Produktionsvorschau `npm run build` und anschließend `npm run start` 
 - Beispiel-Kundenliste im Seitenmenü.
 - Redaktionsübersicht mit Filtern für Entwürfe und ausstehende Freigaben.
 - „Neuer Beitrag“ legt einen lokalen Demo-Entwurf an; er wird nicht gespeichert, wenn die Seite neu geladen wird.
+- Medien-Studio für Bildgrafiken: Bild hochladen, Quadrat-/Hochformat-/Story-Format wählen, Text und Farben anpassen, als PNG exportieren oder in der lokalen Medienablage speichern.
 - Responsive Layout für Desktop, Tablet und Mobilgeräte.
 
-Die übrigen Navigationspunkte zeigen im MVP die Dashboard-Vorschau. Es gibt noch keine dauerhafte Datenbank, Anmeldung, Teamrollen oder Kundenfreigaben.
+Das Medien-Studio speichert Entwürfe lokal im IndexedDB-Speicher dieses Browserprofils. Sie werden nicht zwischen Geräten oder Teammitgliedern synchronisiert. Die Grafik kann als Bildvorlage wieder geöffnet werden; Video-/Reel-Bearbeitung und die Zuordnung zu einem tatsächlichen Veröffentlichungsauftrag sind noch nicht umgesetzt. Es gibt noch keine zentrale Datenbank, Anmeldung, Teamrollen oder Kundenfreigaben.
 
 ## Roadmap: offizielle Meta-/Instagram-Anbindung
 

@@ -12,7 +12,7 @@ const initialDrafts: Draft[] = [
 ];
 
 const nav = [
-  { icon: "◫", label: "Übersicht" }, { icon: "♙", label: "Kunden" }, { icon: "▤", label: "Content" }, { icon: "▦", label: "Redaktionsplan" },
+  { icon: "◫", label: "Übersicht" }, { icon: "♙", label: "Kunden" }, { icon: "▤", label: "Content" }, { icon: "✧", label: "Medien-Studio" }, { icon: "▦", label: "Redaktionsplan" },
 ];
 
 function Badge({ children, kind = "neutral" }: { children: React.ReactNode; kind?: string }) {
@@ -41,7 +41,7 @@ export default function Home() {
       <button className="workspace-switch"><span className="workspace-dot">S</span><span><b>Samin Studio</b><small>Mein Workspace</small></span><span className="chevron">⌄</span></button>
       <div className="nav-label">MENÜ</div>
       <nav className="main-nav" aria-label="Hauptnavigation">
-        {nav.map((item) => <button key={item.label} className={`nav-item ${activeNav === item.label ? "active" : ""}`} onClick={() => setActiveNav(item.label)}><span className="nav-icon">{item.icon}</span>{item.label}{item.label === "Content" && <span className="nav-count">8</span>}</button>)}
+        {nav.map((item) => <button key={item.label} className={`nav-item ${activeNav === item.label ? "active" : ""}`} onClick={() => item.label === "Medien-Studio" ? window.location.assign("/studio") : setActiveNav(item.label)}><span className="nav-icon">{item.icon}</span>{item.label}{item.label === "Content" && <span className="nav-count">8</span>}</button>)}
       </nav>
       <div className="sidebar-section-title">DEINE KUNDEN <button aria-label="Kunden hinzufügen" onClick={() => setNotice("Die Kundenverwaltung folgt im nächsten Ausbauschritt.")}>＋</button></div>
       <div className="client-links"><button onClick={() => setNotice("Kundenansicht für Samin Consulting (Demo). ")}><span className="client-avatar gold">S</span><span>Samin Consulting</span></button><button onClick={() => setNotice("Kundenansicht für Maison Élan (Demo). ")}><span className="client-avatar rose">M</span><span>Maison Élan</span></button><button onClick={() => setNotice("Kundenansicht für Studio Noura (Demo). ")}><span className="client-avatar sage">N</span><span>Studio Noura</span></button></div>
