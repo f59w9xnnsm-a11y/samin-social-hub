@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import "./queue.css";
+import "./post-dialog.css";
 
 export const metadata: Metadata = {
   title: "SAMIN SOCIAL HUB — Dein Social Media Cockpit",

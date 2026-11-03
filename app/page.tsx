@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { getLocalPosts, type LocalPost } from "@/app/lib/local-content";
+import { getLocalPosts, updateLocalPost, type LocalPost } from "@/app/lib/local-content";
 
-type Draft = { id: number | string; client: string; handle: string; type: string; title: string; date: string; status: "Freigabe ausstehend" | "Entwurf" | "Freigegeben"; tone: string; initials: string; previewUrl?: string; captionSummary?: string };
+type Draft = { id: number | string; postId?: string; client: string; handle: string; type: string; title: string; date: string; status: "Freigabe ausstehend" | "Entwurf" | "Freigegeben"; tone: string; initials: string; previewUrl?: string; captionSummary?: string };
 
 const initialDrafts: Draft[] = [
   { id: 1, client: "Maison Élan", handle: "@maisonelan.studio", type: "REEL", title: "Ein Morgen im Atelier", date: "Heute · 16:30", status: "Freigabe ausstehend", tone: "rose", initials: "M" },
@@ -27,6 +27,8 @@ export default function Home() {
   const [localPosts, setLocalPosts] = useState<LocalPost[]>([]);
   const [postPreviews, setPostPreviews] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState("");
+  const [editingPost, setEditingPost] = useState<LocalPost | null>(null);
+  const [savingPost, setSavingPost] = useState(false);
   useEffect(() => {
     let current = true;
     void getLocalPosts().then((posts) => { if (current) setLocalPosts(posts); }).catch(() => undefined);
@@ -41,18 +43,33 @@ export default function Home() {
     ...localPosts.map((post) => {
       const style = post.client === "Maison Élan" ? { tone: "rose", initials: "M" } : post.client === "Studio Noura" ? { tone: "sage", initials: "N" } : { tone: "gold", initials: "S" };
       const date = post.wishDate ? `Wunsch: ${new Date(post.wishDate).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })}` : "Noch nicht geplant";
-      return { id: post.id, client: post.client, handle: post.handle, type: post.format === "story" ? "STORY" : post.format === "cover" ? "FEED" : "POST", title: post.title, date, status: "Entwurf" as const, ...style, previewUrl: postPreviews[post.id], captionSummary: [post.caption, post.hashtags].filter(Boolean).join("  ") };
+      return { id: post.id, postId: post.id, client: post.client, handle: post.handle, type: post.format === "story" ? "STORY" : post.format === "cover" ? "FEED" : "POST", title: post.title, date, status: "Entwurf" as const, ...style, previewUrl: postPreviews[post.id], captionSummary: [post.caption, post.hashtags].filter(Boolean).join("  ") };
     }),
     ...drafts,
   ], [localPosts, postPreviews, drafts]);
   const visibleDrafts = useMemo(() => filter === "Alle Inhalte" ? allDrafts : allDrafts.filter((draft) => draft.status === filter), [allDrafts, filter]);
 
-  function addDraft() {
-    const draft: Draft = { id: Date.now(), client: "Samin Consulting", handle: "@samin.consulting", type: "POST", title: "Neuer Content-Entwurf", date: "Noch nicht geplant", status: "Entwurf", tone: "gold", initials: "S" };
-    setDrafts((current) => [draft, ...current]);
-    setFilter("Alle Inhalte");
-    setNotice("Neuer Entwurf wurde angelegt.");
-    window.setTimeout(() => setNotice(""), 3000);
+  function openPostEditor(postId?: string) {
+    const post = localPosts.find((item) => item.id === postId);
+    if (post) setEditingPost({ ...post });
+    else setNotice("Demo-Beiträge sind Beispiele. Eigene Beiträge kannst du im Medien-Studio anlegen.");
+  }
+
+  async function savePostChanges() {
+    if (!editingPost) return;
+    setSavingPost(true);
+    try {
+      const clientHandles: Record<string, string> = { "Samin Consulting": "@samin.consulting", "Maison Élan": "@maisonelan.studio", "Studio Noura": "@studionoura.de" };
+      const updated = { ...editingPost, handle: clientHandles[editingPost.client] ?? editingPost.handle };
+      await updateLocalPost(updated);
+      setLocalPosts((current) => current.map((post) => post.id === updated.id ? updated : post));
+      setEditingPost(null);
+      setNotice("Der Beitragsentwurf wurde aktualisiert.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Der Beitragsentwurf konnte nicht gespeichert werden.");
+    } finally {
+      setSavingPost(false);
+    }
   }
 
   return <main className="app-shell">
@@ -72,7 +89,7 @@ export default function Home() {
     <section className="main-area" id="start">
       <header className="topbar"><div className="breadcrumb">Workspace <span>/</span> <b>{activeNav}</b></div><div className="top-actions"><span className="demo-pill"><i /> DEMO-ANSICHT</span><button className="icon-button" aria-label="Benachrichtigungen" onClick={() => setNotice("Du bist auf dem neuesten Stand.")}>♧<span className="notification-dot" /></button><span className="top-avatar">S</span></div></header>
       <div className="page-content">
-        <div className="welcome-row"><div><div className="eyebrow">MONTAG, 2. NOVEMBER 2026 <span>✦</span></div><h1>Guten Morgen, Samin <span className="wave">✳</span></h1><p className="welcome-subtitle">Hier ist, was in deinem Social Hub gerade passiert.</p></div><button className="primary-button" onClick={addDraft}><span>＋</span> Neuer Beitrag</button></div>
+        <div className="welcome-row"><div><div className="eyebrow">DIENSTAG, 3. NOVEMBER 2026 <span>✦</span></div><h1>Guten Morgen, Samin <span className="wave">✳</span></h1><p className="welcome-subtitle">Hier ist, was in deinem Social Hub gerade passiert.</p></div><button className="primary-button" onClick={() => window.location.assign("/studio")}><span>＋</span> Neuer Beitrag</button></div>
         <div className="demo-notice"><span className="demo-notice-icon">i</span><span><strong>Vorschau mit Demodaten</strong> · Alle Kundennamen, Beiträge und Kennzahlen auf dieser Seite sind beispielhaft. Es ist noch kein Instagram-Konto verbunden.</span><button aria-label="Hinweis schließen" onClick={(event) => event.currentTarget.parentElement?.remove()}>×</button></div>
 
         <div className="stats-grid">
@@ -85,15 +102,16 @@ export default function Home() {
         <div className="content-grid">
           <section className="panel editorial-panel"><div className="panel-heading"><div><div className="section-kicker">DEIN WORKFLOW</div><h2>Redaktionsübersicht <span className="count-chip">{allDrafts.length.toString().padStart(2, "0")}</span></h2></div><button className="text-link" onClick={() => setActiveNav("Redaktionsplan")}>Zum Redaktionsplan <span>↗</span></button></div>
             <div className="filter-row"><div className="filters">{["Alle Inhalte", "Freigabe ausstehend", "Entwurf"].map((item) => <button key={item} className={filter === item ? "selected" : ""} onClick={() => setFilter(item)}>{item}{item === "Freigabe ausstehend" && <span className="filter-count">2</span>}</button>)}</div><button className="filter-more" aria-label="Weitere Filter" onClick={() => setNotice("Weitere Filter kommen mit der vollständigen Contentverwaltung.")}>☷</button></div>
-            <div className="draft-list">{visibleDrafts.map((draft) => <article className="draft-row" key={draft.id}><div className={`draft-thumb ${draft.tone}`}>{draft.previewUrl ? <img src={draft.previewUrl} alt="" /> : <span>{draft.initials}</span>}<i>{draft.type === "REEL" ? "▶" : draft.type === "CAROUSEL" ? "▧" : draft.type === "STORY" ? "◉" : "✳"}</i></div><div className="draft-info"><div className="draft-meta"><span className="content-type">{draft.type}</span><span className="meta-divider">·</span><span>{draft.client}</span></div><h3>{draft.title}</h3>{draft.captionSummary && <span className="draft-caption">{draft.captionSummary}</span>}<span className="draft-handle">{draft.handle}</span></div><div className="draft-right"><Badge kind={draft.status === "Freigabe ausstehend" ? "pending" : draft.status === "Freigegeben" ? "approved" : "draft"}>{draft.status}</Badge><span className="draft-date">◷ &nbsp;{draft.date}</span></div><button className="row-more" aria-label={`Aktionen für ${draft.title}`} onClick={() => setNotice("Beitragsaktionen werden im nächsten Ausbauschritt ergänzt.")}>···</button></article>)}{visibleDrafts.length === 0 && <div className="empty-state">Keine Inhalte in dieser Kategorie.</div>}</div>
+            <div className="draft-list">{visibleDrafts.map((draft) => <article className="draft-row" key={draft.id}><div className={`draft-thumb ${draft.tone}`}>{draft.previewUrl ? <img src={draft.previewUrl} alt="" /> : <span>{draft.initials}</span>}<i>{draft.type === "REEL" ? "▶" : draft.type === "CAROUSEL" ? "▧" : draft.type === "STORY" ? "◉" : "✳"}</i></div><div className="draft-info"><div className="draft-meta"><span className="content-type">{draft.type}</span><span className="meta-divider">·</span><span>{draft.client}</span></div><h3>{draft.title}</h3>{draft.captionSummary && <span className="draft-caption">{draft.captionSummary}</span>}<span className="draft-handle">{draft.handle}</span></div><div className="draft-right"><Badge kind={draft.status === "Freigabe ausstehend" ? "pending" : draft.status === "Freigegeben" ? "approved" : "draft"}>{draft.status}</Badge><span className="draft-date">◷ &nbsp;{draft.date}</span></div><button className="row-more" aria-label={draft.postId ? `Beitragsentwurf ${draft.title} bearbeiten` : `Aktionen für Demo-Beitrag ${draft.title}`} onClick={() => openPostEditor(draft.postId)}>{draft.postId ? "Bearbeiten" : "···"}</button></article>)}{visibleDrafts.length === 0 && <div className="empty-state">Keine Inhalte in dieser Kategorie.</div>}</div>
             <button className="load-more" onClick={() => setNotice("Alle Demo-Inhalte werden bereits angezeigt.")}>Alle Inhalte ansehen <span>→</span></button>
           </section>
 
-          <aside className="right-column"><section className="panel calendar-panel"><div className="panel-heading compact"><div><div className="section-kicker">DEINE WOCHE</div><h2>November <span className="year">2026</span></h2></div><div className="calendar-arrows"><button aria-label="Vorheriger Monat">‹</button><button aria-label="Nächster Monat">›</button></div></div><div className="week-grid">{["MO", "DI", "MI", "DO", "FR", "SA", "SO"].map((day, i) => <div className="day-col" key={day}><span>{day}</span><b className={i === 0 ? "today" : ""}>{[2, 3, 4, 5, 6, 7, 8][i]}</b><i className={i < 5 ? "has-event" : ""} /></div>)}</div><div className="calendar-divider" /><div className="upcoming-title">ALS NÄCHSTES <button onClick={() => setActiveNav("Redaktionsplan")}>Alles <span>→</span></button></div><div className="upcoming-item"><span className="time-block"><b>16:30</b><small>HEUTE</small></span><span className="upcoming-avatar rose">M</span><span className="upcoming-copy"><b>Ein Morgen im Atelier</b><small>Maison Élan · Reel</small></span><span className="upcoming-dot pending-dot" /></div><div className="upcoming-item"><span className="time-block"><b>10:00</b><small>MORGEN</small></span><span className="upcoming-avatar gold">S</span><span className="upcoming-copy"><b>5 Impulse für deine Marke</b><small>Samin Consulting · Carousel</small></span><span className="upcoming-dot draft-dot" /></div><button className="calendar-link" onClick={() => setActiveNav("Redaktionsplan")}>Kalender öffnen <span>↗</span></button></section>
+          <aside className="right-column"><section className="panel calendar-panel"><div className="panel-heading compact"><div><div className="section-kicker">DEINE WOCHE</div><h2>November <span className="year">2026</span></h2></div><div className="calendar-arrows"><button aria-label="Vorheriger Monat">‹</button><button aria-label="Nächster Monat">›</button></div></div><div className="week-grid">{["MO", "DI", "MI", "DO", "FR", "SA", "SO"].map((day, i) => <div className="day-col" key={day}><span>{day}</span><b className={i === 1 ? "today" : ""}>{[2, 3, 4, 5, 6, 7, 8][i]}</b><i className={i < 5 ? "has-event" : ""} /></div>)}</div><div className="calendar-divider" /><div className="upcoming-title">ALS NÄCHSTES <button onClick={() => setActiveNav("Redaktionsplan")}>Alles <span>→</span></button></div><div className="upcoming-item"><span className="time-block"><b>16:30</b><small>HEUTE</small></span><span className="upcoming-avatar rose">M</span><span className="upcoming-copy"><b>Ein Morgen im Atelier</b><small>Maison Élan · Reel</small></span><span className="upcoming-dot pending-dot" /></div><div className="upcoming-item"><span className="time-block"><b>10:00</b><small>MORGEN</small></span><span className="upcoming-avatar gold">S</span><span className="upcoming-copy"><b>5 Impulse für deine Marke</b><small>Samin Consulting · Carousel</small></span><span className="upcoming-dot draft-dot" /></div><button className="calendar-link" onClick={() => setActiveNav("Redaktionsplan")}>Kalender öffnen <span>↗</span></button></section>
             <section className="connection-card"><div className="connection-top"><span className="connection-icon">◎</span><Badge kind="offline">Nicht verbunden</Badge></div><h3>Instagram verbinden</h3><p>Verbinde später dein professionelles Instagram-Konto, um Kennzahlen zu importieren und Inhalte direkt zu veröffentlichen.</p><button onClick={() => setNotice("Die Meta-Verbindung wird erst nach Einrichtung der offiziellen Schnittstelle aktiviert.")}>Mehr zur Verbindung <span>→</span></button><small>Die Meta-Schnittstelle ist noch nicht eingerichtet.</small></section></aside>
         </div>
-        <footer className="footer"><span>© 2025 SAMIN SOCIAL HUB</span><span>MIT SORGFALT FÜR DEINEN AUFTRITT <i>✦</i></span></footer>
+        <footer className="footer"><span>© 2026 SAMIN SOCIAL HUB</span><span>MIT SORGFALT FÜR DEINEN AUFTRITT <i>✦</i></span></footer>
       </div>
+      {editingPost && <div className="post-dialog-backdrop"><section className="post-dialog" role="dialog" aria-modal="true" aria-labelledby="post-dialog-title"><div className="post-dialog-heading"><div><span className="section-kicker">BEITRAGSENTWURF</span><h2 id="post-dialog-title">Entwurf bearbeiten</h2></div><button className="post-dialog-close" aria-label="Dialog schließen" onClick={() => setEditingPost(null)}>×</button></div><div className="post-dialog-media"><img src={postPreviews[editingPost.id] ?? ""} alt="Vorschau der Beitragsgrafik" /><span>Grafik verknüpft · {editingPost.format === "story" ? "Story" : editingPost.format === "cover" ? "Hochformat" : "Quadrat"}</span></div><label className="post-dialog-label">Titel<input value={editingPost.title} maxLength={100} onChange={(event) => setEditingPost({ ...editingPost, title: event.target.value })} /></label><label className="post-dialog-label">Kunde<select value={editingPost.client} onChange={(event) => setEditingPost({ ...editingPost, client: event.target.value })}><option>Samin Consulting</option><option>Maison Élan</option><option>Studio Noura</option></select></label><label className="post-dialog-label">Caption<textarea rows={4} maxLength={2200} value={editingPost.caption} onChange={(event) => setEditingPost({ ...editingPost, caption: event.target.value })} /></label><label className="post-dialog-label">Hashtags<input value={editingPost.hashtags} maxLength={500} onChange={(event) => setEditingPost({ ...editingPost, hashtags: event.target.value })} /></label><label className="post-dialog-label">Veröffentlichungswunsch <small>Keine automatische Planung</small><input type="datetime-local" value={editingPost.wishDate} onChange={(event) => setEditingPost({ ...editingPost, wishDate: event.target.value })} /></label><div className="post-dialog-actions"><button onClick={() => setEditingPost(null)}>Abbrechen</button><button disabled={savingPost} onClick={() => void savePostChanges()}>{savingPost ? "Speichert …" : "Änderungen speichern"}</button></div></section></div>}
       {notice && <div className="toast" role="status"><span>✦</span>{notice}<button onClick={() => setNotice("")}>×</button></div>}
     </section>
   </main>;

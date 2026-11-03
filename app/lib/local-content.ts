@@ -77,3 +77,14 @@ export async function getLocalPosts(): Promise<LocalPost[]> {
     request.onerror = () => reject(request.error ?? new Error("Die Beitragsentwürfe konnten nicht geladen werden."));
   }).finally(() => database.close());
 }
+
+export async function updateLocalPost(post: LocalPost): Promise<void> {
+  const database = await openDatabase();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction("posts", "readwrite");
+    transaction.objectStore("posts").put(post);
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error ?? new Error("Der Beitragsentwurf konnte nicht aktualisiert werden."));
+    transaction.onabort = () => reject(transaction.error ?? new Error("Die Aktualisierung wurde abgebrochen."));
+  }).finally(() => database.close());
+}
