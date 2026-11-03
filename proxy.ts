@@ -19,7 +19,8 @@ export async function proxy(request: NextRequest) {
     },
   });
 
-  const { data: { claims } } = await supabase.auth.getClaims();
+  const { data: authData } = await supabase.auth.getClaims();
+  const claims = authData?.claims;
   const isLogin = request.nextUrl.pathname.startsWith("/login");
   const isCallback = request.nextUrl.pathname.startsWith("/auth/callback");
 
