@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { getLocalPosts, updateLocalPost, type LocalPost } from "@/app/lib/local-content";
+import { supabaseConfigured } from "@/app/lib/supabase/config";
+import AccountControl from "@/app/lib/supabase/account-control";
 
 type Draft = { id: number | string; postId?: string; client: string; handle: string; type: string; title: string; date: string; status: "Freigabe ausstehend" | "Entwurf" | "Freigegeben"; tone: string; initials: string; previewUrl?: string; captionSummary?: string };
 
@@ -23,7 +25,7 @@ function Badge({ children, kind = "neutral" }: { children: React.ReactNode; kind
 export default function Home() {
   const [activeNav, setActiveNav] = useState("Übersicht");
   const [filter, setFilter] = useState("Alle Inhalte");
-  const [drafts, setDrafts] = useState(initialDrafts);
+  const drafts = initialDrafts;
   const [localPosts, setLocalPosts] = useState<LocalPost[]>([]);
   const [postPreviews, setPostPreviews] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState("");
@@ -31,13 +33,21 @@ export default function Home() {
   const [savingPost, setSavingPost] = useState(false);
   useEffect(() => {
     let current = true;
-    void getLocalPosts().then((posts) => { if (current) setLocalPosts(posts); }).catch(() => undefined);
+    void getLocalPosts().then((posts) => { if (current) setLocalPosts(posts); }).catch((error: unknown) => {
+      if (current) setNotice(error instanceof Error ? error.message : "Die Entwürfe konnten nicht geladen werden.");
+    });
     return () => { current = false; };
   }, []);
   useEffect(() => {
-    const previews = Object.fromEntries(localPosts.map((post) => [post.id, URL.createObjectURL(post.image)]));
+  const objectUrls: string[] = [];
+    const previews = Object.fromEntries(localPosts.map((post) => {
+      if (typeof post.image === "string") return [post.id, post.image];
+      const url = URL.createObjectURL(post.image);
+      objectUrls.push(url);
+      return [post.id, url];
+    }));
     setPostPreviews(previews);
-    return () => Object.values(previews).forEach((url) => URL.revokeObjectURL(url));
+    return () => objectUrls.forEach((url) => URL.revokeObjectURL(url));
   }, [localPosts]);
   const allDrafts = useMemo(() => [
     ...localPosts.map((post) => {
@@ -45,8 +55,11 @@ export default function Home() {
       const date = post.wishDate ? `Wunsch: ${new Date(post.wishDate).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })}` : "Noch nicht geplant";
       return { id: post.id, postId: post.id, client: post.client, handle: post.handle, type: post.format === "story" ? "STORY" : post.format === "cover" ? "FEED" : "POST", title: post.title, date, status: "Entwurf" as const, ...style, previewUrl: postPreviews[post.id], captionSummary: [post.caption, post.hashtags].filter(Boolean).join("  ") };
     }),
-    ...drafts,
+    ...(supabaseConfigured ? [] : drafts),
   ], [localPosts, postPreviews, drafts]);
+  const sidebarClients = supabaseConfigured
+    ? [...new Map(localPosts.map((post) => [post.client, { name: post.client, handle: post.handle }])).values()]
+    : [{ name: "Samin Consulting", handle: "@samin.consulting" }, { name: "Maison Élan", handle: "@maisonelan.studio" }, { name: "Studio Noura", handle: "@studionoura.de" }];
   const visibleDrafts = useMemo(() => filter === "Alle Inhalte" ? allDrafts : allDrafts.filter((draft) => draft.status === filter), [allDrafts, filter]);
 
   function openPostEditor(postId?: string) {
@@ -59,8 +72,7 @@ export default function Home() {
     if (!editingPost) return;
     setSavingPost(true);
     try {
-      const clientHandles: Record<string, string> = { "Samin Consulting": "@samin.consulting", "Maison Élan": "@maisonelan.studio", "Studio Noura": "@studionoura.de" };
-      const updated = { ...editingPost, handle: clientHandles[editingPost.client] ?? editingPost.handle };
+      const updated = { ...editingPost };
       await updateLocalPost(updated);
       setLocalPosts((current) => current.map((post) => post.id === updated.id ? updated : post));
       setEditingPost(null);
@@ -82,22 +94,22 @@ export default function Home() {
         {nav.map((item) => <button key={item.label} className={`nav-item ${activeNav === item.label ? "active" : ""}`} onClick={() => item.label === "Medien-Studio" ? window.location.assign("/studio") : setActiveNav(item.label)}><span className="nav-icon">{item.icon}</span>{item.label}{item.label === "Content" && <span className="nav-count">8</span>}</button>)}
       </nav>
       <div className="sidebar-section-title">DEINE KUNDEN <button aria-label="Kunden hinzufügen" onClick={() => setNotice("Die Kundenverwaltung folgt im nächsten Ausbauschritt.")}>＋</button></div>
-      <div className="client-links"><button onClick={() => setNotice("Kundenansicht für Samin Consulting (Demo). ")}><span className="client-avatar gold">S</span><span>Samin Consulting</span></button><button onClick={() => setNotice("Kundenansicht für Maison Élan (Demo). ")}><span className="client-avatar rose">M</span><span>Maison Élan</span></button><button onClick={() => setNotice("Kundenansicht für Studio Noura (Demo). ")}><span className="client-avatar sage">N</span><span>Studio Noura</span></button></div>
+      <div className="client-links">{sidebarClients.length ? sidebarClients.map((client, index) => <button key={client.name} onClick={() => setNotice(`${client.name} · ${client.handle}`)}><span className={`client-avatar ${["gold", "rose", "sage"][index % 3]}`}>{client.name.charAt(0)}</span><span>{client.name}</span></button>) : <span className="sidebar-empty">Noch keine Kunden</span>}</div>
       <div className="sidebar-bottom"><div className="help-card"><span className="help-star">✳</span><b>Fragen zum Hub?</b><p>Dein persönlicher Bereich für alles rund um Social Media.</p><button onClick={() => setNotice("Der Hilfe-Bereich wird später ergänzt.")}>Mehr erfahren <span>↗</span></button></div><button className="profile"><span className="profile-avatar">S</span><span><b>Samin Team</b><small>Administratorin</small></span><span className="more">···</span></button></div>
     </aside>
 
     <section className="main-area" id="start">
-      <header className="topbar"><div className="breadcrumb">Workspace <span>/</span> <b>{activeNav}</b></div><div className="top-actions"><span className="demo-pill"><i /> DEMO-ANSICHT</span><button className="icon-button" aria-label="Benachrichtigungen" onClick={() => setNotice("Du bist auf dem neuesten Stand.")}>♧<span className="notification-dot" /></button><span className="top-avatar">S</span></div></header>
+      <header className="topbar"><div className="breadcrumb">Workspace <span>/</span> <b>{activeNav}</b></div><div className="top-actions"><span className="demo-pill"><i /> {supabaseConfigured ? "PRIVATE WORKSPACE" : "DEMO-ANSICHT"}</span><button className="icon-button" aria-label="Benachrichtigungen" onClick={() => setNotice("Du bist auf dem neuesten Stand.")}>♧<span className="notification-dot" /></button><AccountControl /><span className="top-avatar">S</span></div></header>
       <div className="page-content">
         <div className="welcome-row"><div><div className="eyebrow">DIENSTAG, 3. NOVEMBER 2026 <span>✦</span></div><h1>Guten Morgen, Samin <span className="wave">✳</span></h1><p className="welcome-subtitle">Hier ist, was in deinem Social Hub gerade passiert.</p></div><button className="primary-button" onClick={() => window.location.assign("/studio")}><span>＋</span> Neuer Beitrag</button></div>
-        <div className="demo-notice"><span className="demo-notice-icon">i</span><span><strong>Vorschau mit Demodaten</strong> · Alle Kundennamen, Beiträge und Kennzahlen auf dieser Seite sind beispielhaft. Es ist noch kein Instagram-Konto verbunden.</span><button aria-label="Hinweis schließen" onClick={(event) => event.currentTarget.parentElement?.remove()}>×</button></div>
+        <div className="demo-notice"><span className="demo-notice-icon">i</span><span><strong>{supabaseConfigured ? "Privater Workspace" : "Vorschau mit Demodaten"}</strong> · {supabaseConfigured ? "Deine Entwürfe werden zentral gespeichert. Instagram ist noch nicht verbunden." : "Alle Kundennamen, Beiträge und Kennzahlen auf dieser Seite sind beispielhaft. Es ist noch kein Instagram-Konto verbunden."}</span><button aria-label="Hinweis schließen" onClick={(event) => event.currentTarget.parentElement?.remove()}>×</button></div>
 
-        <div className="stats-grid">
+        {!supabaseConfigured ? <div className="stats-grid">
           <article className="stat-card"><div className="stat-top"><span>AKTIVE KUNDEN</span><span className="stat-icon blush">♙</span></div><div className="stat-value">03 <span className="stat-change">+1 <small>diesen Monat</small></span></div><div className="stat-foot"><span className="mini-avatars"><i>S</i><i>M</i><i>N</i></span><span>Alle im Überblick</span><span className="stat-arrow">↗</span></div></article>
           <article className="stat-card"><div className="stat-top"><span>GEPLANTE INHALTE</span><span className="stat-icon cream">▤</span></div><div className="stat-value">12 <span className="stat-change positive">↗ 8,2% <small>vs. Vormonat</small></span></div><div className="stat-foot"><div className="progress-track"><i /></div><span>4 von 12 freigegeben</span><span className="stat-arrow">↗</span></div></article>
           <article className="stat-card"><div className="stat-top"><span>OFFENE FREIGABEN</span><span className="stat-icon pale-gold">◷</span></div><div className="stat-value">04 <span className="urgent-label"><i /> 2 bald fällig</span></div><div className="stat-foot"><span>Nächste: Heute, 16:30</span><span className="stat-arrow">↗</span></div></article>
           <article className="stat-card"><div className="stat-top"><span>VERÖFFENTLICHT</span><span className="stat-icon pale-sage">↗</span></div><div className="stat-value">28 <span className="stat-change positive">↗ 12,5% <small>vs. Vormonat</small></span></div><div className="stat-foot"><span>Über alle Kunden</span><span className="stat-arrow">↗</span></div></article>
-        </div>
+        </div> : <div className="demo-notice"><span className="demo-notice-icon">i</span><span><strong>Kennzahlen folgen mit Instagram</strong> · Eigene Workspace-Daten erscheinen in der Redaktionsübersicht.</span></div>}
 
         <div className="content-grid">
           <section className="panel editorial-panel"><div className="panel-heading"><div><div className="section-kicker">DEIN WORKFLOW</div><h2>Redaktionsübersicht <span className="count-chip">{allDrafts.length.toString().padStart(2, "0")}</span></h2></div><button className="text-link" onClick={() => setActiveNav("Redaktionsplan")}>Zum Redaktionsplan <span>↗</span></button></div>
@@ -111,7 +123,7 @@ export default function Home() {
         </div>
         <footer className="footer"><span>© 2026 SAMIN SOCIAL HUB</span><span>MIT SORGFALT FÜR DEINEN AUFTRITT <i>✦</i></span></footer>
       </div>
-      {editingPost && <div className="post-dialog-backdrop"><section className="post-dialog" role="dialog" aria-modal="true" aria-labelledby="post-dialog-title"><div className="post-dialog-heading"><div><span className="section-kicker">BEITRAGSENTWURF</span><h2 id="post-dialog-title">Entwurf bearbeiten</h2></div><button className="post-dialog-close" aria-label="Dialog schließen" onClick={() => setEditingPost(null)}>×</button></div><div className="post-dialog-media"><img src={postPreviews[editingPost.id] ?? ""} alt="Vorschau der Beitragsgrafik" /><span>Grafik verknüpft · {editingPost.format === "story" ? "Story" : editingPost.format === "cover" ? "Hochformat" : "Quadrat"}</span></div><label className="post-dialog-label">Titel<input value={editingPost.title} maxLength={100} onChange={(event) => setEditingPost({ ...editingPost, title: event.target.value })} /></label><label className="post-dialog-label">Kunde<select value={editingPost.client} onChange={(event) => setEditingPost({ ...editingPost, client: event.target.value })}><option>Samin Consulting</option><option>Maison Élan</option><option>Studio Noura</option></select></label><label className="post-dialog-label">Caption<textarea rows={4} maxLength={2200} value={editingPost.caption} onChange={(event) => setEditingPost({ ...editingPost, caption: event.target.value })} /></label><label className="post-dialog-label">Hashtags<input value={editingPost.hashtags} maxLength={500} onChange={(event) => setEditingPost({ ...editingPost, hashtags: event.target.value })} /></label><label className="post-dialog-label">Veröffentlichungswunsch <small>Keine automatische Planung</small><input type="datetime-local" value={editingPost.wishDate} onChange={(event) => setEditingPost({ ...editingPost, wishDate: event.target.value })} /></label><div className="post-dialog-actions"><button onClick={() => setEditingPost(null)}>Abbrechen</button><button disabled={savingPost} onClick={() => void savePostChanges()}>{savingPost ? "Speichert …" : "Änderungen speichern"}</button></div></section></div>}
+      {editingPost && <div className="post-dialog-backdrop"><section className="post-dialog" role="dialog" aria-modal="true" aria-labelledby="post-dialog-title"><div className="post-dialog-heading"><div><span className="section-kicker">BEITRAGSENTWURF</span><h2 id="post-dialog-title">Entwurf bearbeiten</h2></div><button className="post-dialog-close" aria-label="Dialog schließen" onClick={() => setEditingPost(null)}>×</button></div><div className="post-dialog-media"><img src={postPreviews[editingPost.id] ?? ""} alt="Vorschau der Beitragsgrafik" /><span>Grafik verknüpft · {editingPost.format === "story" ? "Story" : editingPost.format === "cover" ? "Hochformat" : "Quadrat"}</span></div><label className="post-dialog-label">Titel<input value={editingPost.title} maxLength={100} onChange={(event) => setEditingPost({ ...editingPost, title: event.target.value })} /></label><label className="post-dialog-label">Kunde<input value={editingPost.client} maxLength={120} onChange={(event) => setEditingPost({ ...editingPost, client: event.target.value })} /></label><label className="post-dialog-label">Instagram-Name<input value={editingPost.handle} maxLength={40} onChange={(event) => setEditingPost({ ...editingPost, handle: event.target.value })} /></label><label className="post-dialog-label">Caption<textarea rows={4} maxLength={2200} value={editingPost.caption} onChange={(event) => setEditingPost({ ...editingPost, caption: event.target.value })} /></label><label className="post-dialog-label">Hashtags<input value={editingPost.hashtags} maxLength={500} onChange={(event) => setEditingPost({ ...editingPost, hashtags: event.target.value })} /></label><label className="post-dialog-label">Veröffentlichungswunsch <small>Keine automatische Planung</small><input type="datetime-local" value={editingPost.wishDate} onChange={(event) => setEditingPost({ ...editingPost, wishDate: event.target.value })} /></label><div className="post-dialog-actions"><button onClick={() => setEditingPost(null)}>Abbrechen</button><button disabled={savingPost} onClick={() => void savePostChanges()}>{savingPost ? "Speichert …" : "Änderungen speichern"}</button></div></section></div>}
       {notice && <div className="toast" role="status"><span>✦</span>{notice}<button onClick={() => setNotice("")}>×</button></div>}
     </section>
   </main>;

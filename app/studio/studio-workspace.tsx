@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { type ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
 import { getDesigns, saveDesign as storeDesign, savePost, type LocalPost, type MediaFormat, type SavedDesign } from "@/app/lib/local-content";
+import { supabaseConfigured } from "@/app/lib/supabase/config";
 import "./studio.css";
 import "./post-workflow.css";
 
@@ -30,6 +31,7 @@ export default function StudioWorkspace() {
   const [textColor, setTextColor] = useState("#ffffff");
   const [layout, setLayout] = useState<"editorial" | "minimal">("editorial");
   const [client, setClient] = useState(clientOptions[0].name);
+  const [clientHandle, setClientHandle] = useState(clientOptions[0].handle);
   const [caption, setCaption] = useState("");
   const [hashtags, setHashtags] = useState("");
   const [wishDate, setWishDate] = useState("");
@@ -109,7 +111,7 @@ export default function StudioWorkspace() {
     const image = new Image();
     image.onload = () => { imageRef.current = image; setImageVersion((current) => current + 1); };
     image.src = imageUrl;
-    return () => { image.onload = null; URL.revokeObjectURL(imageUrl); };
+    return () => { image.onload = null; if (imageUrl.startsWith("blob:")) URL.revokeObjectURL(imageUrl); };
   }, [imageUrl]);
 
   function handleUpload(event: ChangeEvent<HTMLInputElement>) {
@@ -145,7 +147,7 @@ export default function StudioWorkspace() {
     setBusy(true);
     try {
       const image = await canvasBlob();
-      const selectedClient = clientOptions.find((option) => option.name === client) ?? clientOptions[0];
+      const selectedClient = { name: client.trim() || clientOptions[0].name, handle: clientHandle.trim() };
       const designId = crypto.randomUUID();
       const titleLine = title.split("\n")[0] || "Neuer Beitragsentwurf";
       const createdAt = Date.now();
@@ -180,26 +182,26 @@ export default function StudioWorkspace() {
   async function loadSaved(design: SavedDesign) {
     setFormat(design.format);
     setTitle(design.title);
-    const url = URL.createObjectURL(design.image);
+    const url = typeof design.image === "string" ? design.image : URL.createObjectURL(design.image);
     setImageUrl(url);
     setLayout("editorial");
     setMessage("Gespeicherte Grafik als Bildvorlage geladen.");
   }
 
   return <main className="studio-page">
-    <header className="studio-topbar"><Link href="/" className="studio-brand"><span className="studio-brand-mark">S</span><span><strong>SAMIN</strong><small>SOCIAL HUB</small></span></Link><div className="studio-breadcrumb"><Link href="/">Übersicht</Link><span>/</span><b>Medien-Studio</b></div><span className="studio-demo">DEMO-WORKSPACE</span></header>
+    <header className="studio-topbar"><Link href="/" className="studio-brand"><span className="studio-brand-mark">S</span><span><strong>SAMIN</strong><small>SOCIAL HUB</small></span></Link><div className="studio-breadcrumb"><Link href="/">Übersicht</Link><span>/</span><b>Medien-Studio</b></div><span className="studio-demo">{supabaseConfigured ? "PRIVATE WORKSPACE" : "DEMO-WORKSPACE"}</span></header>
     <div className="studio-shell"><div className="studio-heading"><div><span className="studio-kicker">KREATION & CONTENT</span><h1>Medien-Studio</h1><p>Gestalte deine Social-Media-Grafiken direkt in deinem Workflow.</p></div><Link href="/" className="back-link">← Zur Übersicht</Link></div>
-      <div className="studio-disclaimer"><span>✦</span><p><b>Dein kreativer Arbeitsbereich.</b> Hier entstehen Instagram-Grafiken im Samin-Look. Gespeicherte Entwürfe bleiben zunächst nur in diesem Browser.</p></div>
+      <div className="studio-disclaimer"><span>✦</span><p><b>Dein kreativer Arbeitsbereich.</b> Hier entstehen Instagram-Grafiken im Samin-Look. {supabaseConfigured ? "Neue Entwürfe werden in deinem privaten Workspace gespeichert." : "Gespeicherte Entwürfe bleiben zunächst nur in diesem Browser."}</p></div>
       <div className="studio-layout"><section className="editor-panel"><div className="editor-toolbar"><div><span className="studio-kicker">VORSCHAU</span><strong>{dimensions[format].label}</strong></div><label className="upload-button">↑ Bild hinzufügen<input type="file" accept="image/*" onChange={handleUpload} /></label></div><div className="canvas-stage"><canvas ref={canvasRef} aria-label="Vorschau deiner Social-Media-Grafik" /></div><div className="canvas-foot"><span>Vorschau · Export in hoher Auflösung</span><span>{dimensions[format].width} × {dimensions[format].height} px</span></div></section>
         <aside className="editor-controls"><div className="control-section"><span className="studio-kicker">1 · FORMAT</span><div className="format-options">{(["post", "cover", "story"] as MediaFormat[]).map((item) => <button key={item} className={format === item ? "format-option chosen" : "format-option"} onClick={() => setFormat(item)}><span className={`format-preview ${item}`} /><span><b>{item === "post" ? "Quadrat" : item === "cover" ? "Feed hoch" : "Story"}</b><small>{dimensions[item].width} × {dimensions[item].height}</small></span>{format === item && <i>✓</i>}</button>)}</div></div>
           <div className="control-section"><span className="studio-kicker">2 · VORLAGE</span><div className="template-options"><button className={layout === "editorial" ? "template chosen" : "template"} onClick={() => setLayout("editorial")}><span className="template-swatch editorial-swatch"><i>Deine<br />Geschichte</i><small>SAMIN / NOTES</small></span><b>Editorial</b></button><button className={layout === "minimal" ? "template chosen" : "template"} onClick={() => setLayout("minimal")}><span className="template-swatch minimal-swatch"><small>DEIN IMPULS</small><i>Deine<br />Geschichte</i></span><b>Minimal</b></button></div></div>
           <div className="control-section"><span className="studio-kicker">3 · DEIN TEXT</span><label className="field-label">Überschrift <small>Zeilenumbruch mit Enter</small></label><textarea rows={2} maxLength={100} value={title} onChange={(event) => setTitle(event.target.value)} /><label className="field-label">Kleine Zeile</label><input className="text-field" maxLength={42} value={subtitle} onChange={(event) => setSubtitle(event.target.value)} /></div>
           <div className="control-section color-section"><span className="studio-kicker">4 · FARBEN</span><label className="color-control"><span>Hintergrund</span><input type="color" value={background} onChange={(event) => setBackground(event.target.value)} /></label><label className="color-control"><span>Schrift</span><input type="color" value={textColor} onChange={(event) => setTextColor(event.target.value)} /></label></div>
-          <div className="control-section post-section"><span className="studio-kicker">5 · BEITRAG VORBEREITEN</span><label className="field-label">Kunde</label><select className="text-field" value={client} onChange={(event) => setClient(event.target.value)}>{clientOptions.map((option) => <option key={option.name}>{option.name}</option>)}</select><label className="field-label">Caption</label><textarea rows={3} maxLength={2200} placeholder="Schreibe den Text zu deinem Beitrag …" value={caption} onChange={(event) => setCaption(event.target.value)} /><label className="field-label">Hashtags <small>optional</small></label><input className="text-field" maxLength={500} placeholder="#samin #socialmedia" value={hashtags} onChange={(event) => setHashtags(event.target.value)} /><label className="field-label">Veröffentlichungswunsch <small>nur vorgemerkt, nicht geplant</small></label><input className="text-field" type="datetime-local" value={wishDate} onChange={(event) => setWishDate(event.target.value)} /></div>
+          <div className="control-section post-section"><span className="studio-kicker">5 · BEITRAG VORBEREITEN</span><label className="field-label">Kundenname</label><input className="text-field" list="demo-clients" value={client} onChange={(event) => { setClient(event.target.value); setClientHandle(clientOptions.find((option) => option.name === event.target.value)?.handle ?? ""); }} /><datalist id="demo-clients">{clientOptions.map((option) => <option key={option.name} value={option.name} />)}</datalist><label className="field-label">Instagram-Name <small>optional</small></label><input className="text-field" maxLength={40} placeholder="@kunde" value={clientHandle} onChange={(event) => setClientHandle(event.target.value)} /><label className="field-label">Caption</label><textarea rows={3} maxLength={2200} placeholder="Schreibe den Text zu deinem Beitrag …" value={caption} onChange={(event) => setCaption(event.target.value)} /><label className="field-label">Hashtags <small>optional</small></label><input className="text-field" maxLength={500} placeholder="#samin #socialmedia" value={hashtags} onChange={(event) => setHashtags(event.target.value)} /><label className="field-label">Veröffentlichungswunsch <small>nur vorgemerkt, nicht geplant</small></label><input className="text-field" type="datetime-local" value={wishDate} onChange={(event) => setWishDate(event.target.value)} /></div>
           <div className="editor-actions editor-actions-stack"><button className="save-design" disabled={busy} onClick={createPostDraft}>{busy ? "Wird gespeichert …" : "Als Beitragsentwurf speichern"}</button><div className="editor-actions"><button className="export-design" disabled={busy} onClick={saveDesign}>In Medienablage sichern</button><button className="export-design" disabled={busy} onClick={exportDesign}>↓ PNG exportieren</button></div></div>{message && <div className="studio-message" role="status">{message} {createdPost && <Link href="/" className="studio-queue-link">Redaktionsübersicht öffnen →</Link>}</div>}
         </aside></div>
-      <section className="saved-library"><div className="library-heading"><div><span className="studio-kicker">DEINE MEDIENABLAGE</span><h2>Gespeicherte Entwürfe <span>{saved.length}</span></h2></div><span className="local-label">Nur in diesem Browser</span></div>{saved.length ? <div className="saved-grid">{saved.slice(0, 6).map((design) => <SavedCard key={design.id} design={design} onOpen={() => void loadSaved(design)} />)}</div> : <div className="library-empty"><span>▧</span><p>Deine Entwürfe erscheinen hier, sobald du etwas speicherst.</p></div>}</section>
-      <footer className="studio-footer">MEDIEN-STUDIO · PHASE 1 <span>Video-Bearbeitung und gemeinsame Teamablage folgen in weiteren Ausbauschritten.</span></footer>
+      <section className="saved-library"><div className="library-heading"><div><span className="studio-kicker">DEINE MEDIENABLAGE</span><h2>Gespeicherte Entwürfe <span>{saved.length}</span></h2></div><span className="local-label">{supabaseConfigured ? "Privater Workspace" : "Nur in diesem Browser"}</span></div>{saved.length ? <div className="saved-grid">{saved.slice(0, 6).map((design) => <SavedCard key={design.id} design={design} onOpen={() => void loadSaved(design)} />)}</div> : <div className="library-empty"><span>▧</span><p>Deine Entwürfe erscheinen hier, sobald du etwas speicherst.</p></div>}</section>
+      <footer className="studio-footer">MEDIEN-STUDIO · PHASE 1 <span>Video-Bearbeitung und Team-Einladungen folgen in weiteren Ausbauschritten.</span></footer>
     </div>
   </main>;
 }
@@ -207,6 +209,7 @@ export default function StudioWorkspace() {
 function SavedCard({ design, onOpen }: { design: SavedDesign; onOpen: () => void }) {
   const [preview, setPreview] = useState("");
   useEffect(() => {
+    if (typeof design.image === "string") { setPreview(design.image); return; }
     const url = URL.createObjectURL(design.image);
     setPreview(url);
     return () => URL.revokeObjectURL(url);
